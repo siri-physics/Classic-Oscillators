@@ -1,0 +1,387 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+
+#######################################################################
+# HELPER FUNCTION: MSE
+#######################################################################
+def mse(f1, f2):
+    return np.mean((np.array(f1) - np.array(f2))**2)
+
+#######################################################################
+# UNDAMPED HARMONIC OSCILLATOR: RK4, Euler, Velocity-Verlet
+#######################################################################
+# Parameters
+omega0 = 2 * np.pi
+x0, v0 = 1.0, 0.0
+y0 = [x0, v0]
+t = np.linspace(0, 4, 400)
+h = t[1] - t[0]
+
+# Differential equation
+def undamped_oscillator(t, y):  # y=[x,v]
+    x, v = y
+    return [v, -omega0**2 * x]
+
+# RK4
+x_rk, v_rk = [x0], [v0]
+x, v = x0, v0
+for ti in t[:-1]:
+    Y = [x, v]
+    k1 = undamped_oscillator(ti, Y)
+    k2 = undamped_oscillator(ti + h/2, [x + h*k1[0]/2, v + h*k1[1]/2])
+    k3 = undamped_oscillator(ti + h/2, [x + h*k2[0]/2, v + h*k2[1]/2])
+    k4 = undamped_oscillator(ti + h, [x + h*k3[0], v + h*k3[1]])
+    x += h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0])
+    v += h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])
+    x_rk.append(x)
+    v_rk.append(v)
+
+# Euler
+x_eul, v_eul = [x0], [v0]
+x, v = x0, v0
+for ti in t[:-1]:
+    a = -omega0**2 * x
+    x += h * v
+    v += h * a
+    x_eul.append(x)
+    v_eul.append(v)
+
+# Velocity-Verlet
+x_vv, v_vv = [x0], [v0]
+x, v = x0, v0
+a = -omega0**2 * x
+for ti in t[:-1]:
+    x_new = x + v*h + 0.5*a*h**2
+    a_new = -omega0**2 * x_new
+    v_new = v + 0.5*(a + a_new)*h
+    x_vv.append(x_new)
+    v_vv.append(v_new)
+    x, v, a = x_new, v_new, a_new
+
+# Analytical solution
+x_analytical = x0 * np.cos(omega0 * t) + (v0/omega0) * np.sin(omega0 * t)
+
+# MSE
+error_rk = mse(x_rk, x_analytical)
+error_eul = mse(x_eul, x_analytical)
+error_vv = mse(x_vv, x_analytical)
+print("Undamped oscillator MSE:")
+print("  RK4:         ", error_rk)
+print("  Euler:       ", error_eul)
+print("  Velocity-Verlet:", error_vv)
+
+# Plot
+fig, ax = plt.subplots(figsize=(12,5))
+ax.plot(t, x_analytical, '-', color='blue', lw=2, label='Analytical')
+ax.plot(t, x_rk, '.', color='red', markersize=6, label=f'RK4 (MSE={error_rk:.2e})')
+ax.plot(t, x_eul, '--', color='green', lw=2, label=f'Euler (MSE={error_eul:.2e})')
+ax.plot(t, x_vv, 'x', color='orange', lw=2, label=f'Velocity-Verlet (MSE={error_vv:.2e})')
+ax.set_xlabel("Time t", fontsize=14)
+ax.set_ylabel("Displacement x(t)", fontsize=14)
+ax.set_title("Undamped Harmonic Oscillator: Numerical Methods Comparison", fontsize=15)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=12)
+plt.show()
+
+#######################################################################
+# DAMPED HARMONIC OSCILLATOR: RK4, Euler, Velocity-Verlet
+#######################################################################
+# Parameters
+t = np.linspace(0, 4, 200)
+h = t[1] - t[0]
+
+# Damping coefficients
+gamma_weak = 0.1 * omega0
+gamma_critical = omega0
+gamma_strong = 2.0 * omega0
+envelope = x0 * np.exp(-gamma_weak * t)
+
+# Differential equation
+def damped_oscillator(t, y, gamma):
+    x, v = y
+    return [v, -2*gamma*v - omega0**2*x]
+
+# Integration method
+def integrate_damped(gamma):
+    x_rk, v_rk = [x0], [v0]
+    x_eul, v_eul = [x0], [v0]
+    x_vv, v_vv = [x0], [v0]
+
+    x_rk_curr, v_rk_curr = x0, v0
+    x_eul_curr, v_eul_curr = x0, v0
+    x_vv_curr, v_vv_curr = x0, v0
+    a_vv_curr = -2*gamma*v_vv_curr - omega0**2*x_vv_curr
+
+    for ti in t[:-1]:
+        # RK4
+        k1 = damped_oscillator(ti, [x_rk_curr, v_rk_curr], gamma)
+        k2 = damped_oscillator(ti + h/2, [x_rk_curr + h*k1[0]/2, v_rk_curr + h*k1[1]/2], gamma)
+        k3 = damped_oscillator(ti + h/2, [x_rk_curr + h*k2[0]/2, v_rk_curr + h*k2[1]/2], gamma)
+        k4 = damped_oscillator(ti + h, [x_rk_curr + h*k3[0], v_rk_curr + h*k3[1]], gamma)
+        x_rk_curr += h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0])
+        v_rk_curr += h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])
+        x_rk.append(x_rk_curr)
+        v_rk.append(v_rk_curr)
+
+        # Euler
+        a_eul = -2*gamma*v_eul_curr - omega0**2*x_eul_curr
+        x_eul_curr += h*v_eul_curr
+        v_eul_curr += h*a_eul
+        x_eul.append(x_eul_curr)
+        v_eul.append(v_eul_curr)
+
+        # Velocity-Verlet
+        x_new = x_vv_curr + v_vv_curr*h + 0.5*a_vv_curr*h**2
+        a_new = -2*gamma*(v_vv_curr + 0.5*h*a_vv_curr) - omega0**2*x_new
+        v_new = v_vv_curr + 0.5*(a_vv_curr + a_new)*h
+        x_vv.append(x_new)
+        v_vv.append(v_new)
+        x_vv_curr, v_vv_curr, a_vv_curr = x_new, v_new, a_new
+
+    return np.array(x_rk), np.array(v_rk), np.array(x_eul), np.array(v_eul), np.array(x_vv), np.array(v_vv)
+
+# Cases
+cases = {'weak': gamma_weak, 'critical': gamma_critical, 'strong': gamma_strong}
+results = {}
+for name, gamma in cases.items():
+    x_rk, v_rk, x_eul, v_eul, x_vv, v_vv = integrate_damped(gamma)
+    results[name] = {'RK4': x_rk, 'Euler': x_eul, 'VV': x_vv}
+
+    sol = solve_ivp(lambda t, y: damped_oscillator(t, y, gamma), [t[0], t[-1]], y0, t_eval=t)
+
+    mse_rk = mse(x_rk, sol.y[0])
+    mse_eul = mse(x_eul, sol.y[0])
+    mse_vv = mse(x_vv, sol.y[0])
+    print(f"\n{name.capitalize()} damped:")
+    print(f"  MSE RK4: {mse_rk:.2e}")
+    print(f"  MSE Euler: {mse_eul:.2e}")
+    print(f"  MSE Velocity-Verlet: {mse_vv:.2e}")
+
+# Plot damped
+fig, ax = plt.subplots(figsize=(10,6))
+colors = {'weak':'blue', 'critical':'orange', 'strong':'red'}
+for name in cases:
+    if name=='weak':
+        ax.plot(t, envelope, '--', color='gray', lw=1.5, label=r"Envelope ±A₀ e^{-γt}")
+        ax.plot(t, -envelope, '--', color='gray', lw=1.5)
+    ax.plot(t, results[name]['RK4'], '.', color=colors[name], markersize=6, label=f'RK4 {name}')
+    ax.plot(t, results[name]['Euler'], '--', color=colors[name], lw=1.5, label=f'Euler {name}')
+    ax.plot(t, results[name]['VV'], 'x', color=colors[name], lw=1.5, label=f'Velocity-Verlet {name}')
+ax.set_xlabel("Time t", fontsize=14)
+ax.set_ylabel("Displacement x(t)", fontsize=14)
+ax.set_title("Damped Harmonic Oscillator – Numerical Methods Comparison", fontsize=15)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=11, loc='upper right')
+plt.show()
+
+#######################################################################
+# DRIVEN OSCILLATOR – AMPLITUDE (Resonance Curve)
+#######################################################################
+F0 = 400.0
+m = 10.0
+x0, v0 = 0.0, 0.0
+y0 = [x0, v0]
+t_max = 200
+t = np.linspace(0, t_max, 1900)
+h = t[1] - t[0]
+omega_vals = np.linspace(0.01, 3*omega0, 200)
+gammas = {'weak':0.05*omega0, 'medium':0.09*omega0, 'strong':0.20*omega0, 'very_strong':0.9*omega0}
+colors = {'weak':'blue', 'medium':'green', 'strong':'purple', 'very_strong':'orange'}
+
+def driven_oscillator(t, y, gamma, omega_drive):
+    x, v = y
+    return [v, -2*gamma*v - omega0**2*x + F0/m*np.cos(omega_drive*t)]
+
+# Initialize results
+res_rk4 = {key: [] for key in gammas}
+res_eul = {key: [] for key in gammas}
+res_verlet = {key: [] for key in gammas}
+res_ivp = {key: [] for key in gammas}
+errors = {}
+
+# Compute resonance curves
+for name, gamma in gammas.items():
+    for omega_drive in omega_vals:
+        # RK4
+        x, v = x0, v0
+        x_rk = [x]
+        for ti in t[:-1]:
+            k1 = driven_oscillator(ti, [x,v], gamma, omega_drive)
+            k2 = driven_oscillator(ti+h/2, [x+h*k1[0]/2, v+h*k1[1]/2], gamma, omega_drive)
+            k3 = driven_oscillator(ti+h/2, [x+h*k2[0]/2, v+h*k2[1]/2], gamma, omega_drive)
+            k4 = driven_oscillator(ti+h, [x+h*k3[0], v+h*k3[1]], gamma, omega_drive)
+            x += h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0])
+            v += h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])
+            x_rk.append(x)
+        N = len(x_rk)
+        res_rk4[name].append(np.max(np.abs(x_rk[int(0.9*N):])))
+
+        # Euler
+        x, v = x0, v0
+        x_e = [x]
+        for ti in t[:-1]:
+            dx, dv = driven_oscillator(ti, [x,v], gamma, omega_drive)
+            x += h*dx
+            v += h*dv
+            x_e.append(x)
+        res_eul[name].append(np.max(np.abs(x_e[int(0.9*N):])))
+
+        # Velocity-Verlet
+        x, v = x0, v0
+        x_v = [x]
+        for ti in t[:-1]:
+            a = -2*gamma*v - omega0**2*x + F0/m*np.cos(omega_drive*ti)
+            x_new = x + v*h + 0.5*a*h**2
+            a_new = -2*gamma*v - omega0**2*x_new + F0/m*np.cos(omega_drive*(ti+h))
+            v_new = v + 0.5*(a + a_new)*h
+            x, v = x_new, v_new
+            x_v.append(x)
+        res_verlet[name].append(np.max(np.abs(x_v[int(0.9*N):])))
+
+        # Reference solve_ivp
+        sol = solve_ivp(lambda t,y: driven_oscillator(t,y,gamma,omega_drive), [t[0], t[-1]], y0, t_eval=t)
+        x_sol = sol.y[0]
+        res_ivp[name].append(np.max(np.abs(x_sol[int(0.9*len(x_sol)):])))
+
+    # Compute errors
+    errors[name] = {
+        'RK4': mse(res_rk4[name], res_ivp[name]),
+        'Euler': mse(res_eul[name], res_ivp[name]),
+        'Verlet': mse(res_verlet[name], res_ivp[name])
+    }
+    print(f"\n{name.upper()} damping:")
+    print(f"  MSE RK4:    {errors[name]['RK4']:.2e}")
+    print(f"  MSE Euler:  {errors[name]['Euler']:.2e}")
+    print(f"  MSE Verlet: {errors[name]['Verlet']:.2e}")
+
+# Plot resonance
+fig, ax = plt.subplots(figsize=(12,6))
+for name in gammas:
+    ax.plot(omega_vals/omega0, res_ivp[name], lw=2, color=colors[name], label=f'Reference {name}')
+    ax.plot(omega_vals/omega0, res_rk4[name], '.', color=colors[name], markersize=6, alpha=0.8, label=f'RK4 {name}')
+    ax.plot(omega_vals/omega0, res_eul[name], '--', color=colors[name], lw=1.5, label=f'Euler {name}')
+    ax.plot(omega_vals/omega0, res_verlet[name], 'x', color=colors[name], lw=1.5, label=f'Velocity-Verlet {name}')
+ax.axvline(1.0, ls=':', color='gray', lw=2, label=r'$\omega=\omega_0$')
+ax.set_xlabel(r'$\omega/\omega_0$', fontsize=13)
+ax.set_ylabel(r'Normalized Amplitude |A(ω)|', fontsize=13)
+ax.set_title('Driven Harmonic Oscillator – Amplitude Comparison', fontsize=15)
+ax.set_xlim(0, 2.5)
+ax.set_ylim(0, 12)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=10, loc='upper right')
+plt.show()
+
+#######################################################################
+# DRIVEN OSCILLATOR – PHASE SHIFT
+#######################################################################
+F0 = 1.0
+x0, v0 = 0.0, 0.0
+y0 = [x0, v0]
+omega_num = np.linspace(0.1*omega0, 2.5*omega0, 50)
+
+gamma_values = {
+    "weak": 0.05*omega0,
+    "medium": 0.09*omega0,
+    "strong": 0.20*omega0,
+    "very_strong": 0.90*omega0
+}
+
+# Phase extraction
+def extract_phase(t, x, omega_d, t_start=8.0, t_end=None):
+    if t_end is None: t_end = t[-1]
+    mask = (t>=t_start) & (t<=t_end)
+    t_sel = t[mask]
+    x_sel = x[mask]
+    cos_comp = np.trapz(x_sel*np.cos(omega_d*t_sel), t_sel)
+    sin_comp = np.trapz(x_sel*np.sin(omega_d*t_sel), t_sel)
+    return np.arctan2(sin_comp, cos_comp)
+
+# Differential equation
+def oscillator_rhs(t, state, gamma, omega_d):
+    x, v = state
+    dxdt = v
+    dvdt = -2*gamma*v - omega0**2*x + F0*np.cos(omega_d*t)
+    return np.array([dxdt,dvdt])
+
+# Integration steps
+def rk4_step(state, t, h, gamma, omega_d):
+    k1 = oscillator_rhs(t, state, gamma, omega_d)
+    k2 = oscillator_rhs(t+h/2, state+h*k1/2, gamma, omega_d)
+    k3 = oscillator_rhs(t+h/2, state+h*k2/2, gamma, omega_d)
+    k4 = oscillator_rhs(t+h, state+h*k3, gamma, omega_d)
+    return state + h/6*(k1+2*k2+2*k3+k4)
+
+def euler_step(state, t, h, gamma, omega_d):
+    return state + h*oscillator_rhs(t, state, gamma, omega_d)
+
+def verlet_step(x, v, h, gamma, omega_d, t):
+    a = -2*gamma*v - omega0**2*x + F0*np.cos(omega_d*t)
+    x_new = x + v*h + 0.5*a*h**2
+    a_new = -2*gamma*v - omega0**2*x_new + F0*np.cos(omega_d*(t+h))
+    v_new = v + 0.5*(a + a_new)*h
+    return x_new, v_new
+
+# Compute phase shift
+phi_rk4 = {label:[] for label in gamma_values}
+phi_euler = {label:[] for label in gamma_values}
+phi_verlet = {label:[] for label in gamma_values}
+phi_ivp = {label:[] for label in gamma_values}
+
+for label, gamma in gamma_values.items():
+    for omega_d in omega_num:
+        # Reference
+        sol = solve_ivp(lambda t,y: oscillator_rhs(t,y,gamma,omega_d), [0,100], [0,0], t_eval=np.linspace(0,100,2000))
+        phi_ivp[label].append(np.degrees(extract_phase(sol.t, sol.y[0], omega_d)))
+        # RK4
+        x,v = 0,0
+        xs = [x]
+        ts = np.linspace(0,100,2000)
+        h_rk = ts[1]-ts[0]
+        for ti in ts[:-1]:
+            x,v = rk4_step(np.array([x,v]), ti, h_rk, gamma, omega_d)
+            xs.append(x)
+        phi_rk4[label].append(np.degrees(extract_phase(ts, xs, omega_d)))
+        # Euler
+        x,v = 0,0
+        xs = [x]
+        for ti in ts[:-1]:
+            x,v = euler_step(np.array([x,v]), ti, h_rk, gamma, omega_d)
+            xs.append(x)
+        phi_euler[label].append(np.degrees(extract_phase(ts, xs, omega_d)))
+        # Verlet
+        x,v = 0,0
+        xs = [x]
+        for ti in ts[:-1]:
+            x,v = verlet_step(x,v,h_rk,gamma,omega_d,ti)
+            xs.append(x)
+        phi_verlet[label].append(np.degrees(extract_phase(ts, xs, omega_d)))
+
+# Compute MSE
+errors_phase = {}
+for label in gamma_values:
+    errors_phase[label] = {
+        'RK4': mse(phi_rk4[label], phi_ivp[label]),
+        'Euler': mse(phi_euler[label], phi_ivp[label]),
+        'Verlet': mse(phi_verlet[label], phi_ivp[label])
+    }
+    print(f"\nPhase errors for {label} damping:")
+    for method, val in errors_phase[label].items():
+        print(f"  {method}: {val:.2e}")
+
+# Plot phase shift
+fig, ax = plt.subplots(figsize=(12,6))
+for label, color in zip(gamma_values, ['blue','green','purple','orange']):
+    ax.plot(omega_num/omega0, phi_ivp[label], lw=2, color=color, label=f'Reference {label}')
+    ax.plot(omega_num/omega0, phi_rk4[label], '.', color=color, markersize=6, label=f'RK4 {label}')
+    ax.plot(omega_num/omega0, phi_euler[label], '--', color=color, lw=1.5, label=f'Euler {label}')
+    ax.plot(omega_num/omega0, phi_verlet[label], 'x', color=color, lw=1.5, label=f'Velocity-Verlet {label}')
+ax.axvline(1.0, ls=':', color='gray', lw=2)
+ax.axhline(90, ls=':', color='gray', lw=2)
+ax.set_xlabel(r'$\omega/\omega_0$', fontsize=13)
+ax.set_ylabel(r'Phase φ(ω) [deg]', fontsize=13)
+ax.set_title('Driven Damped Harmonic Oscillator – Phase Shift', fontsize=15)
+ax.grid(True, alpha=0.3)
+ax.set_xlim(0,2.5)
+ax.legend(fontsize=10)
+plt.show()
