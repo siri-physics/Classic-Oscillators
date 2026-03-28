@@ -1,0 +1,195 @@
+import numpy as np  # Calculations / Arrays
+import matplotlib.pyplot as plt  # Graphs
+from scipy.integrate import solve_ivp
+
+#######################################################################
+# Undamped Oscillator: RK4 Implementation
+#######################################################################
+
+# Helper function: MSE
+def mse(f1, f2):
+    return np.mean((np.array(f1) - np.array(f2))**2)
+
+# Parameters
+omega0 = 2 * np.pi        # Natural frequency
+x0 = 1.0                  # Initial displacement
+v0 = 0.0                  # Initial velocity
+y0 = [x0, v0]             # Initial state
+t = np.linspace(0, 8, 500)  # Time grid
+h = t[1] - t[0]           # Time step size (for RK4)
+# -> How far we jump in time per calculation step (t=0 -> 0.02 -> 0.04 ...)
+# -> RK4: How far should I step in time to compute the next point
+
+# Function x'' + omega0^2 * x = 0
+def undamped_oscillator(t, y):  # y = [z,v] = [1,0] -> y[0]: position x, y[1]: velocity
+    return [y[1], -omega0**2 * y[0]]  # Return derivative [dx/dt, dv/dt]
+
+# RK4
+x_rk = [x0]  # Arrays (lists)
+v_rk = [v0]
+x = x0       # Initial values
+v = v0
+
+for ti in t[:-1]:
+    Y = [x, v]  # Combine position and velocity
+
+    # We want y(t+h) (position and velocity after one step): Euler approach -> RK4
+    k1 = undamped_oscillator(ti, Y)
+    k2 = undamped_oscillator(ti + h/2, [x + h*k1[0]/2, v + h*k1[1]/2])
+    k3 = undamped_oscillator(ti + h/2, [x + h*k2[0]/2, v + h*k2[1]/2])
+    k4 = undamped_oscillator(ti + h, [x + h*k3[0], v + h*k3[1]])
+
+    # Weighted average of slopes: Update position and velocity
+    x = x + h/6 * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0])
+    v = v + h/6 * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1])
+
+    # Append the calculated values to the list
+    x_rk.append(x)
+    v_rk.append(v)
+
+# Analytical solution
+x_analytical = x0 * np.cos(omega0 * t) + (v0 / omega0) * np.sin(omega0 * t)
+
+# MSE calculation
+error_rk4 = mse(x_rk, x_analytical)
+print("MSE Undamped Oscillator (RK4 implemented):", error_rk4)
+
+# Plot
+fig, ax = plt.subplots(figsize=(10,5))
+line1, = ax.plot(t, x_analytical, '-', color="blue", lw=2, label="Analytical")
+line2, = ax.plot(t, x_rk, '.', color="red", markersize=6, label="RK4")
+
+leg1 = ax.legend(handles=[line1, line2], fontsize=13, loc='upper right')
+leg2 = ax.legend(handles=[line2], labels=[f"MSE Undamped = {error_rk4:.2e}"], fontsize=13, loc='lower right')
+ax.add_artist(leg1)
+
+ax.set_xlabel("Time $t$", fontsize=14)
+ax.set_ylabel("Displacement $x(t)$", fontsize=14)
+ax.set_title("Undamped Harmonic Oscillator – RK4 and Analytical", fontsize=15)
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+plt.show()
+
+
+#######################################################################
+# Damped Oscillator: RK4 Implementation
+#######################################################################
+
+# Parameters
+omega0 = 2 * np.pi
+x0 = 1.0
+v0 = 0.0
+y0 = [x0, v0]
+t = np.linspace(0, 6.5, 200)
+h = t[1] - t[0]
+
+# Damping cases
+gamma_weak = 0.1 * omega0
+gamma_crit = omega0
+gamma_strong = 2.0 * omega0
+
+# Envelope
+envelope = x0 * np.exp(-gamma_weak * t)
+
+# Weakly damped ODE
+def damped_oscillator_weak(t, y):
+    x, v = y
+    return [v, -2*gamma_weak*v - omega0**2*x]
+
+sol_weak = solve_ivp(damped_oscillator_weak, [t[0], t[-1]], y0, t_eval=t)
+
+x_rk_weak = [x0]
+v_rk_weak = [v0]
+x, v = x0, v0
+for ti in t[:-1]:
+    k1 = damped_oscillator_weak(ti, [x,v])
+    k2 = damped_oscillator_weak(ti+h/2, [x+h*k1[0]/2, v+h*k1[1]/2])
+    k3 = damped_oscillator_weak(ti+h/2, [x+h*k2[0]/2, v+h*k2[1]/2])
+    k4 = damped_oscillator_weak(ti+h, [x+h*k3[0], v+h*k3[1]])
+    x = x + h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0])
+    v = v + h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])
+    x_rk_weak.append(x)
+    v_rk_weak.append(v)
+
+# Critically damped
+def damped_oscillator_crit(t, y):
+    x, v = y
+    return [v, -2*gamma_crit*v - omega0**2*x]
+
+sol_crit = solve_ivp(damped_oscillator_crit, [t[0], t[-1]], y0, t_eval=t)
+
+x_rk_crit = [x0]
+v_rk_crit = [v0]
+x, v = x0, v0
+for ti in t[:-1]:
+    k1 = damped_oscillator_crit(ti, [x,v])
+    k2 = damped_oscillator_crit(ti+h/2, [x+h*k1[0]/2, v+h*k1[1]/2])
+    k3 = damped_oscillator_crit(ti+h/2, [x+h*k2[0]/2, v+h*k2[1]/2])
+    k4 = damped_oscillator_crit(ti+h, [x+h*k3[0], v+h*k3[1]])
+    x = x + h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0])
+    v = v + h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])
+    x_rk_crit.append(x)
+    v_rk_crit.append(v)
+
+# Strongly damped
+def damped_oscillator_strong(t, y):
+    x, v = y
+    return [v, -2*gamma_strong*v - omega0**2*x]
+
+sol_strong = solve_ivp(damped_oscillator_strong, [t[0], t[-1]], y0, t_eval=t)
+
+x_rk_strong = [x0]
+v_rk_strong = [v0]
+x, v = x0, v0
+for ti in t[:-1]:
+    k1 = damped_oscillator_strong(ti, [x,v])
+    k2 = damped_oscillator_strong(ti+h/2, [x+h*k1[0]/2, v+h*k1[1]/2])
+    k3 = damped_oscillator_strong(ti+h/2, [x+h*k2[0]/2, v+h*k2[1]/2])
+    k4 = damped_oscillator_strong(ti+h, [x+h*k3[0], v+h*k3[1]])
+    x = x + h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0])
+    v = v + h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])
+    x_rk_strong.append(x)
+    v_rk_strong.append(v)
+
+# MSE calculations
+error_weak = mse(x_rk_weak, sol_weak.y[0])
+error_crit = mse(x_rk_crit, sol_crit.y[0])
+error_strong = mse(x_rk_strong, sol_strong.y[0])
+
+print("MSE RK4 Implemented: weak:", error_weak)
+print("MSE RK4 Implemented: critical:", error_crit)
+print("MSE RK4 Implemented: strong:", error_strong)
+
+# Plotting the damped oscillator
+fig, ax = plt.subplots(figsize=(10,6))
+# Solve_ivp solutions
+line1, = ax.plot(t, sol_weak.y[0], lw=1, color='blue', label='Analytical γ=0.1*ω0')
+line2, = ax.plot(t, sol_crit.y[0], lw=1, color='orange', label='Analytical γ=ω0')
+line3, = ax.plot(t, sol_strong.y[0], lw=1, color='red', label='Analytical γ=2.0*ω0')
+
+# RK4 solutions
+line4, = ax.plot(t, x_rk_weak, '.', color='blue', markersize=6, alpha=0.6, label='RK4 γ=0.1*ω0')
+line5, = ax.plot(t, x_rk_crit, '.', color='orange', markersize=6, alpha=0.6, label='RK4 γ=ω0')
+line6, = ax.plot(t, x_rk_strong, '.', color='red', markersize=6, alpha=0.6, label='RK4 γ=2.0*ω0')
+
+# Envelope
+line_env, = ax.plot(t, envelope, '--', lw=1.5, color="gray", label=r"Envelope ±A0 e^{-γt}")
+ax.plot(t, -envelope, '--', lw=1.5, color="gray")
+
+leg1 = ax.legend(handles=[line1, line2, line3, line4, line5, line6, line_env], fontsize=11, loc='upper right')
+ax.add_artist(leg1)
+
+# Second legend for MSE
+leg2 = ax.legend(handles=[line4, line5, line6],
+                 labels=[f"MSE weak = {error_weak:.2e}",
+                         f"MSE critical = {error_crit:.2e}",
+                         f"MSE strong = {error_strong:.2e}"],
+                 fontsize=11, loc='lower right')
+ax.add_artist(leg2)
+
+ax.set_xlabel("Time t", fontsize=14)
+ax.set_ylabel("Displacement x(t)", fontsize=14)
+ax.set_title("Damped Harmonic Oscillator – RK4 and Analytical", fontsize=15)
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+plt.show()
