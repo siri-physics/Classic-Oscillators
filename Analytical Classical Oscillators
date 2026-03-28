@@ -1,18 +1,152 @@
-# Analytical Classical Oscillators 
-# Introduction 
-Classical oscillators are fundamental systems in physics that describe periodic motion around an equilibrium position. They appear in many areas, from simple mechanical systems like springs to more complex phenomena in field theory and quantum mechanics. Their dynamics are governed by differential equations that encode the interplay between forces, inertia, and external influences.
+"""
+################################################################################
+# Analytical Classical Oscillators
+# 
+# This script contains simulations for:
+# 1) Undamped harmonic oscillator
+# 2) Damped harmonic oscillator (weak, critical, strong)
+# 3) Driven harmonic oscillator (amplitude and phase)
+# 
+# Author: <Your Name>
+# Date: <Today's Date>
+################################################################################
+"""
 
-# Undamped Harmonic Oscillator
-The undamped harmonic oscillator describes an ideal system without energy loss, where the restoring force is proportional to the displacement. This leads to the equation of motion
-\ddot{x} + \omega_0^2 x = 0
-whose solution is purely oscillatory. The motion is characterized by a constant amplitude and a natural frequency determined by the system parameters.
+import numpy as np
+import matplotlib.pyplot as plt
 
-# Damped Harmonic Oscillator
-In more realistic systems, dissipative forces such as friction must be taken into account. This results in the damped oscillator, described by
-\ddot{x} + \gamma \dot{x} + \omega_0^2 x = 0
-where the damping term causes the amplitude to decrease over time. Depending on the strength of the damping, the system may exhibit oscillatory decay or a non-oscillatory return to equilibrium.
+################################################################################
+# SECTION 1: UNDAMPED HARMONIC OSCILLATOR
+################################################################################
 
-# Driven Harmonic Oscillator
-If an external time-dependent force acts on the system, one obtains the driven oscillator. Its equation of motion is given by
-\ddot{x} + \gamma \dot{x} + \omega_0^2 x = F_0 \cos(\omega t)
-The solution consists of a transient part, which decays due to damping, and a steady-state motion determined by the driving force. This leads to characteristic phenomena such as resonance and phase shifts between the driving force and the system response.
+# Parameters
+omega0 = 2 * np.pi          # Natural frequency 
+x0 = 1.0                    # Initial displacement
+v0 = 0.0                    # Initial velocity
+t = np.linspace(0, 8, 2000) # Time axis 
+
+# Displacement calculation
+x_undamped = x0 * np.cos(omega0 * t)
+
+# Plot
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(t, x_undamped, color="blue", lw=2, label=r"$x(t)=A_0\cos(\omega_0 t)$")
+ax.set_xlabel("$t$  [s]", fontsize=13)
+ax.set_ylabel("Displacement $x(t)$", fontsize=13)
+ax.set_title("Undamped Harmonic Oscillator", fontsize=15)
+ax.legend(fontsize=12)
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+plt.show()
+
+################################################################################
+# SECTION 2: DAMPED HARMONIC OSCILLATOR
+################################################################################
+
+# Damping parameters
+gamma_weak   = 0.1 * omega0
+gamma_crit   = omega0
+gamma_strong = 2.0 * omega0
+
+# Damping functions
+def damped_weak(t, gamma, omega0, x0, v0):
+    omega_d = np.sqrt(omega0**2 - gamma**2)
+    B = (v0 + gamma * x0) / omega_d
+    return np.exp(-gamma * t) * (x0 * np.cos(omega_d * t) + B * np.sin(omega_d * t))
+
+def damped_critical(t, gamma, x0, v0):
+    B = v0 + gamma * x0
+    return (x0 + B * t) * np.exp(-gamma * t)
+
+def damped_strong(t, gamma, omega0, x0, v0):
+    beta = np.sqrt(gamma**2 - omega0**2)
+    lam1 = - gamma + beta   
+    lam2 = - gamma - beta 
+    B = (x0 * lam1 - v0) / (lam1 - lam2)
+    A = x0 - B
+    return A * np.exp(lam1 * t) + B * np.exp(lam2 * t)
+
+# Displacement calculation
+x_weak   = damped_weak(t, gamma_weak, omega0, x0, v0)
+x_crit   = damped_critical(t, gamma_crit, x0, v0)
+x_strong = damped_strong(t, gamma_strong, omega0, x0, v0)
+envelope = x0 * np.exp(-gamma_weak * t)
+
+# Plot
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(t, x_weak, lw=2, color="blue", label=rf"Weak damping ($\gamma=0.1\,\omega_0$)")
+ax.plot(t, x_crit, lw=2, color="orange", label=rf"Critical damping ($\gamma=\omega_0$)")
+ax.plot(t, x_strong, lw=2, color="red", label=rf"Strong damping ($\gamma=2.0\,\omega_0$)")
+ax.plot(t, envelope, '--', lw=1.5, color="gray", label=r"Envelope $\pm A_0 e^{-\gamma t}$")
+ax.plot(t, -envelope, '--', lw=1.5, color="gray")
+ax.set_xlabel("$t$  [s]", fontsize=13)
+ax.set_ylabel("Displacement $x(t)$", fontsize=13)
+ax.set_title("Damped Harmonic Oscillator", fontsize=15)
+ax.legend(fontsize=11, loc="upper right")
+ax.grid(True, alpha=0.3)
+ax.set_xlim(t[0], t[-1])
+fig.tight_layout()
+plt.show()
+
+################################################################################
+# SECTION 3: DRIVEN HARMONIC OSCILLATOR - AMPLITUDE
+################################################################################
+
+# Frequency axis
+omega = np.linspace(0.01, 3*omega0, 2000)
+
+# Function for normalized amplitude
+def resonance_amplitude(omega, omega0, gamma, F0=400.0, m=10.0):
+    return (F0/m) / np.sqrt((omega0**2 - omega**2)**2 + (2 * gamma * omega)**2)
+
+# Different damping values
+gammas_res = {
+    r"$\gamma \ll \omega_0$": 0.05 * omega0,
+    r"$\gamma < \omega_0$":    0.09 * omega0,
+    r"$\gamma > \omega_0$":    0.20 * omega0,
+    r"$\gamma \gg \omega_0$": 0.90 * omega0,
+}
+
+# Plot
+fig, ax = plt.subplots(figsize=(10, 6))
+for label, gamma_val in gammas_res.items():
+    A = resonance_amplitude(omega, omega0, gamma_val)
+    ax.plot(omega/omega0, A, lw=2, label=f"{label}")
+ax.axvline(1.0, ls=":", color="gray", lw=2, label=r"$\omega=\omega_0$")
+ax.set_xlabel(r"$\omega / \omega_0$", fontsize=13)
+ax.set_ylabel(r"Normalized Amplitude $|A(\omega)|$", fontsize=13)
+ax.set_title("Driven Harmonic Oscillator - Resonance Curve", fontsize=15)
+ax.legend(fontsize=11)
+ax.set_xlim(0, 3)
+ax.set_ylim(0, 12)
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+plt.show()
+
+################################################################################
+# SECTION 4: DRIVEN HARMONIC OSCILLATOR - PHASE
+################################################################################
+
+# Phase shift function
+def phase_shift(omega, omega0, gamma):
+    phi = np.arctan2(2 * gamma * omega, omega0**2 - omega**2)
+    phi = np.where(phi < 0, phi + np.pi, phi)
+    return phi
+
+# Plot
+fig, ax = plt.subplots(figsize=(10, 6))
+for label, gamma_val in gammas_res.items():
+    phi = phase_shift(omega, omega0, gamma_val)
+    ax.plot(omega/omega0, np.degrees(phi), lw=2, label=f"{label}")
+ax.axhline(90, ls=":", color="gray", lw=1, label=r"$\varphi=90°$")
+ax.axvline(1.0, ls=":", color="gray", lw=1)
+ax.set_xlabel(r"$\omega / \omega_0$", fontsize=15)
+ax.set_ylabel(r"Phase $\varphi(\omega)$ [°]", fontsize=15)
+ax.set_title("Driven Harmonic Oscillator - Phase Shift", fontsize=15)
+ax.legend(fontsize=11)
+ax.set_xlim(0, 2.5)
+ax.set_ylim(-5, 185)
+ax.set_yticks([0, 30, 60, 90, 120, 150, 180])
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+plt.show()
