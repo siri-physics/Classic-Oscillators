@@ -1,0 +1,99 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+#######################################################################
+# Getriebener Oszillator – Stabilitätsvergleich
+#######################################################################
+"""
+Demonstration der Stabilität von RK4 und Velocity Verlet im Vergleich zu Euler über lange Integrationszeiten. 
+RK4 bleibt stabil, während Euler bei größeren Zeitschritten zunehmend instabil wird.
+"""
+
+# Parameter
+omega0 = 2*np.pi
+F0_values = [5, 10, 15, 30]  # verschiedene Antriebsamplituden
+m = 20.0
+gamma = 0.0 # ungedeämpft
+t_end = 25
+N = 5000
+t = np.linspace(0, t_end, N)  # Zeitachse
+h = t[1] - t[0]
+
+omega_drive = 0.9 * omega0
+colors = ['blue', 'green', 'orange', 'red']
+
+# Hilfsfunktionen
+def driven_oscillator(t, y, omega_drive, F0):
+    x, v = y
+    return [v, -omega0**2*x + F0/m*np.cos(omega_drive*t)]
+
+def rk4_step(y, t, h, omega_drive, F0):
+    x, v = y
+    k1 = driven_oscillator(t, [x,v], omega_drive, F0)
+    k2 = driven_oscillator(t + h/2, [x + h*k1[0]/2, v + h*k1[1]/2], omega_drive, F0)
+    k3 = driven_oscillator(t + h/2, [x + h*k2[0]/2, v + h*k2[1]/2], omega_drive, F0)
+    k4 = driven_oscillator(t + h, [x + h*k3[0], v + h*k3[1]], omega_drive, F0)
+    return [x + h/6*(k1[0] + 2*k2[0] + 2*k3[0] + k4[0]), v + h/6*(k1[1] + 2*k2[1] + 2*k3[1] + k4[1])]
+
+def euler_step(y, t, h, omega_drive, F0):
+    x, v = y
+    a = -omega0**2*x + F0/m*np.cos(omega_drive*t)
+    return [x + h*v, v + h*a]
+
+def vv_step(y, a_current, t, h, omega_drive, F0):
+    x, v = y
+    x_new = x + v*h + 0.5*a_current*h**2
+    a_new = -omega0**2*x_new + F0/m*np.cos(omega_drive*(t+h))
+    v_new = v + 0.5*(a_current + a_new)*h
+    return [x_new, v_new, a_new]
+
+
+plt.figure(figsize=(12,6))
+
+for idx, F0 in enumerate(F0_values):
+    color = colors[idx]
+
+    # Anfangswerte auf 0 setzen -> Fehler am Anfang sichtbar
+    x0, v0 = 0.0, 0.0
+    y0 = [x0, v0]
+
+    # Analytisch (solve_ivp)
+    from scipy.integrate import solve_ivp
+    sol = solve_ivp(lambda t, y: driven_oscillator(t, y, omega_drive, F0),
+                    [0, t_end], y0, t_eval=t)
+    x_ref = sol.y[0]
+
+    # RK4
+    x, v = x0, v0
+    x_rk = []
+    for ti in t:
+        x, v = rk4_step([x, v], ti, h, omega_drive, F0)
+        x_rk.append(x)
+
+    # Euler
+    x, v = x0, v0
+    x_euler = []
+    for ti in t:
+        x, v = euler_step([x, v], ti, h, omega_drive, F0)
+        x_euler.append(x)
+
+    # Velocity-Verlet
+    x, v = x0, v0
+    a_current = -omega0**2*x + F0/m*np.cos(0)
+    x_vv = []
+    for ti in t:
+        x, v, a_current = vv_step([x, v], a_current, ti, h, omega_drive, F0)
+        x_vv.append(x)
+
+    # Plot
+    plt.plot(t, x_ref, '-', color='black', lw=1, label="Analytisch" if idx==0 else None)
+    plt.plot(t, x_rk, '-', color=color, alpha=0.7, label=f"RK4 F0={F0}")
+    plt.plot(t, x_euler, '--', color=color, alpha=0.7, label=f"Euler F0={F0}")
+    plt.plot(t, x_vv, ':', color=color, alpha=0.7, label=f"VV F0={F0}")
+
+plt.xlabel("t")
+plt.ylabel("x(t)")
+plt.title("Ungedämpfter getriebener Oszillator")
+plt.grid(True)
+plt.legend(fontsize=8, ncol=2, loc='upper right')
+plt.show()
