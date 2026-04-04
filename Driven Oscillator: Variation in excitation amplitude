@@ -1,0 +1,125 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+
+#######################################################################
+# Getriebener Oszillator – Variation der Anregungsamplitude
+#######################################################################
+"""
+Untersuchung der Auslenkung für verschiedene Treibkräfte F0 = 5, 10, 15, 30. Zeigt, 
+wie die Systemantwort auf stärkere Anregung reagiert und wann numerische Methoden instabil werden.
+"""
+
+# Parameter
+omega0 = 2*np.pi
+F0_values = [5, 10, 15, 30]  
+m = 20.0
+gamma = 0.0
+t_end = 25
+N = 5000
+t = np.linspace(0, t_end, N)
+
+omega_drive = 0.9 * omega0
+colors = ['blue', 'green', 'orange', 'red']
+
+# ---------------- Hilfsfunktionen ----------------
+def driven_oscillator(t, y, omega_drive, F0):
+    x, v = y
+    return [v, -omega0**2*x + F0/m*np.cos(omega_drive*t)]
+
+def rk4_step(y, t, h, omega_drive, F0):
+    x, v = y
+    k1 = driven_oscillator(t, [x,v], omega_drive, F0)
+    k2 = driven_oscillator(t + h/2, [x + h*k1[0]/2, v + h*k1[1]/2], omega_drive, F0)
+    k3 = driven_oscillator(t + h/2, [x + h*k2[0]/2, v + h*k2[1]/2], omega_drive, F0)
+    k4 = driven_oscillator(t + h, [x + h*k3[0], v + h*k3[1]], omega_drive, F0)
+    return [x + h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0]), v + h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])]
+
+def euler_step(y, t, h, omega_drive, F0):
+    x, v = y
+    a = -omega0**2*x + F0/m*np.cos(omega_drive*t)
+    return [x + h*v, v + h*a]
+
+def vv_step(y, a_current, t, h, omega_drive, F0):
+    x, v = y
+    x_new = x + v*h + 0.5*a_current*h**2
+    a_new = -omega0**2*x_new + F0/m*np.cos(omega_drive*(t+h))
+    v_new = v + 0.5*(a_current + a_new)*h
+    return [x_new, v_new, a_new]
+
+# Plot
+plt.figure(figsize=(12,6))
+h = t[1]-t[0]
+
+# Maske für Zoombereich t=22 bis 24
+mask = (t >= 22) & (t <= 24)
+t_zoom = t[mask]
+
+for idx, F0 in enumerate(F0_values):
+    color = colors[idx]
+
+    # Anfangswerte
+    x0 = F0 / m / (omega0**2 - omega_drive**2)
+    v0 = 0.0
+    y0 = [x0, v0]
+
+    # Analytisch
+    sol = solve_ivp(lambda t, y: driven_oscillator(t, y, omega_drive, F0),
+                    [0, t_end], y0, t_eval=t)
+    x_ref = sol.y[0]
+
+    # Numerische Integration
+    # RK4
+    x, v = x0, v0
+    x_rk_values = []
+    for ti in t:
+        x, v = rk4_step([x, v], ti, h, omega_drive, F0)
+        x_rk_values.append(x)
+
+    # Euler
+    x, v = x0, v0
+    x_euler_values = []
+    for ti in t:
+        x, v = euler_step([x, v], ti, h, omega_drive, F0)
+        x_euler_values.append(x)
+
+    # Velocity-Verlet
+    x, v = x0, v0
+    a_current = -omega0**2*x + F0/m*np.cos(0)
+    x_vv_values = []
+    for ti in t:
+        x, v, a_current = vv_step([x, v], a_current, ti, h, omega_drive, F0)
+        x_vv_values.append(x)
+
+    # MSE
+    x_rk_values = np.array(x_rk_values)
+    x_euler_values = np.array(x_euler_values)
+    x_vv_values = np.array(x_vv_values)
+
+    # Zoom nur für Plot
+    x_rk_zoom = x_rk_values[mask]
+    x_euler_zoom = x_euler_values[mask]
+    x_vv_zoom = x_vv_values[mask]
+
+    mse_rk4 = np.mean((x_rk_zoom - x_ref[mask])**2)
+    mse_euler = np.mean((x_euler_zoom - x_ref[mask])**2)
+    mse_vv = np.mean((x_vv_zoom - x_ref[mask])**2)
+
+    print(f"\nF0 = {F0} | MSE im Bereich t=22–24:")
+    print(f"RK4 MSE:   {mse_rk4:.5e}")
+    print(f"Euler MSE: {mse_euler:.5e}")
+    print(f"VV MSE:    {mse_vv:.5e}")
+
+    # Plot
+    plt.plot(t_zoom, x_ref[mask], '-', color='black', lw=1, label="Analytisch" if idx==0 else None)
+    plt.plot(t_zoom, x_rk_zoom, '-', color=color, lw=1, alpha=0.8, label=f"RK4 F0={F0}")
+    plt.plot(t_zoom, x_euler_zoom, '--', color=color, lw=1, alpha=0.8, label=f"Euler F0={F0}")
+    plt.plot(t_zoom, x_vv_zoom, ':', color=color, lw=1, alpha=0.8, label=f"VV F0={F0}")
+
+# Achsen
+plt.xlabel("t", fontsize=12)
+plt.ylabel("Auslenkung x(t)", fontsize=12)
+plt.title("Ungedämpfter getriebener Oszillator ", fontsize=14)
+plt.grid(True, alpha=0.3)
+plt.legend(fontsize=8, ncol=2, loc='upper right')
+plt.show()
